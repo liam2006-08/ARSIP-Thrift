@@ -1,0 +1,708 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin Panel · ARSIP.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="js/style.css">
+  <style>
+    .admin-page { min-height: 100vh; background: var(--bg); }
+    .admin-login { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 2rem; }
+    .admin-login-card { width: 100%; max-width: 440px; background: var(--bg-card); padding: 3rem; border: 1px solid var(--border); }
+    .admin-login-title { font-size: 1.75rem; font-weight: 800; letter-spacing: -.04em; text-transform: uppercase; margin-bottom: .5rem; }
+    .admin-login-sub { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 2rem; }
+    .admin-topbar { background: var(--bg-card); border-bottom: 1px solid var(--border); padding: 0 1.5rem; height: 60px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 30; }
+    .admin-topbar-brand { font-size: 16px; font-weight: 800; letter-spacing: -.04em; text-transform: uppercase; }
+    .admin-topbar-brand span { color: var(--text-muted); }
+    .admin-topbar-user { display: flex; align-items: center; gap: 10px; }
+    .admin-topbar-email { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted); }
+    /* product form */
+    .product-form { background: var(--bg-card); border: 1px solid var(--border); padding: 2rem; margin-bottom: 2rem; animation: slideUp .2s ease; }
+    .product-form-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem; }
+    @media(max-width:768px){ .product-form-grid { grid-template-columns: 1fr; } }
+    .product-form-title { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: .3em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 1.5rem; }
+    .product-form-actions { display: flex; justify-content: flex-end; gap: .75rem; margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
+    .admin-empty { text-align: center; padding: 4rem; font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; color: var(--text-muted); border: 1px solid var(--border); background: var(--bg-card); }
+
+    /* Upload widget — multi-photo grid */
+    .photos-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: .6rem;
+      margin-top: .4rem;
+    }
+    @media(max-width:600px) { .photos-grid { grid-template-columns: repeat(2,1fr); } }
+    .photo-slot {
+      aspect-ratio: 1;
+      border: 2px dashed var(--border);
+      background: var(--bg);
+      position: relative;
+      overflow: hidden;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color .2s;
+    }
+    .photo-slot:hover { border-color: var(--primary); }
+    .photo-slot img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .photo-slot-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: .3rem;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      text-align: center;
+      padding: .5rem;
+    }
+    .photo-slot-remove {
+      position: absolute;
+      top: 4px; right: 4px;
+      background: rgba(0,0,0,.65);
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 22px; height: 22px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 1;
+    }
+    .photo-slot-uploading {
+      position: absolute; inset: 0;
+      background: rgba(0,0,0,.5);
+      display: flex; align-items: center; justify-content: center;
+      color: #fff;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .1em;
+    }
+    .photo-slot-num {
+      position: absolute;
+      bottom: 4px; left: 6px;
+      background: rgba(0,0,0,.55);
+      color: #fff;
+      font-family: var(--font-mono);
+      font-size: 8px;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 2px;
+    }
+  </style>
+</head>
+<body>
+<div id="admin-root"></div>
+<div id="toast" class="toast hidden"></div>
+
+<script src="js/config.js"></script>
+<script>
+applyDarkMode();
+
+async function initAdmin() {
+  const user = await getCurrentUser();
+
+  if (!user || !isAdmin(user)) {
+    // Show login form
+    document.getElementById('admin-root').innerHTML = `
+      <div class="admin-login">
+        <div class="admin-login-card">
+          <div style="width:56px;height:56px;background:var(--primary);color:var(--primary-text);display:flex;align-items:center;justify-content:center;margin-bottom:1.5rem;">
+            <i data-lucide="lock" class="icon icon-lg"></i>
+          </div>
+          <h1 class="admin-login-title">Admin Panel</h1>
+          <p class="admin-login-sub">Hanya untuk pengelola toko yang terotorisasi.</p>
+          <div id="admin-login-error" class="auth-error hidden"></div>
+          <form onsubmit="adminLogin(event)">
+            <div class="form-group">
+              <i data-lucide="mail" class="form-icon icon"></i>
+              <input type="email" id="admin-email" class="form-input form-input-icon" placeholder="EMAIL ADMIN" required style="text-transform:none;letter-spacing:.05em;">
+            </div>
+            <div class="form-group">
+              <i data-lucide="lock" class="form-icon icon"></i>
+              <input type="password" id="admin-password" class="form-input form-input-icon" placeholder="PASSWORD" required style="text-transform:none;letter-spacing:.05em;">
+            </div>
+            <button type="submit" class="btn-primary btn-full" style="margin-top:.5rem;">
+              <i data-lucide="log-in" class="icon"></i> Masuk ke Admin
+            </button>
+          </form>
+          <a href="index.html" style="display:block;text-align:center;margin-top:1.25rem;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:var(--text-muted);">← Kembali ke Toko</a>
+        </div>
+      </div>`;
+    lucide.createIcons();
+    return;
+  }
+
+  renderAdminPanel(user);
+}
+
+async function adminLogin(e) {
+  e.preventDefault();
+  const email = document.getElementById('admin-email').value;
+  const password = document.getElementById('admin-password').value;
+  const errEl = document.getElementById('admin-login-error');
+  errEl.classList.add('hidden');
+
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) { errEl.textContent = error.message; errEl.classList.remove('hidden'); return; }
+
+  const user = await getCurrentUser();
+  if (!isAdmin(user)) {
+    await sb.auth.signOut();
+    errEl.textContent = 'Akun ini tidak memiliki akses admin.';
+    errEl.classList.remove('hidden'); return;
+  }
+  renderAdminPanel(user);
+}
+
+// ======= ADMIN PANEL =======
+let _adminProducts = [];
+let _adminOrders = [];
+let _editingProductId = null;
+
+function renderAdminPanel(user) {
+  document.getElementById('admin-root').innerHTML = `
+    <div class="admin-page">
+      <div class="admin-topbar">
+        <span class="admin-topbar-brand">ARSIP<span>.</span> ADMIN</span>
+        <div class="admin-topbar-user">
+          <i data-lucide="sun" class="icon btn-icon" onclick="toggleDark()" style="cursor:pointer;color:var(--text-muted);"></i>
+          <span class="admin-topbar-email">${user.email}</span>
+          <button class="btn-outline" onclick="adminLogout()" style="padding:6px 12px;">
+            <i data-lucide="log-out" class="icon"></i> <span class="hide-xs">Keluar</span>
+          </button>
+          <a href="index.html" class="btn-outline" style="padding:6px 12px;">
+            <i data-lucide="arrow-left" class="icon"></i> <span class="hide-xs">Toko</span>
+          </a>
+        </div>
+      </div>
+
+      <div class="admin-layout">
+        <!-- Sidebar -->
+        <aside class="admin-sidebar">
+          <button class="admin-nav-item active" id="nav-dashboard" onclick="showAdminSection('dashboard')">
+            <i data-lucide="layout-dashboard" class="icon"></i> Dashboard
+          </button>
+          <button class="admin-nav-item" id="nav-products" onclick="showAdminSection('products')">
+            <i data-lucide="package" class="icon"></i> Produk
+          </button>
+          <button class="admin-nav-item" id="nav-orders" onclick="showAdminSection('orders')">
+            <i data-lucide="shopping-cart" class="icon"></i> Pesanan
+          </button>
+        </aside>
+
+        <!-- Content -->
+        <main>
+          <!-- DASHBOARD -->
+          <div class="admin-content admin-section active" id="section-dashboard">
+            <h2 style="font-size:1.75rem;font-weight:800;letter-spacing:-.04em;text-transform:uppercase;margin-bottom:2rem;">Dashboard</h2>
+            <div class="admin-stats" id="admin-stats">
+              <div class="admin-stat-card"><p class="admin-stat-label">Total Produk</p><p class="admin-stat-value" id="stat-products">—</p></div>
+              <div class="admin-stat-card"><p class="admin-stat-label">Total Pesanan</p><p class="admin-stat-value" id="stat-orders">—</p></div>
+              <div class="admin-stat-card"><p class="admin-stat-label">Revenue</p><p class="admin-stat-value" id="stat-revenue">—</p></div>
+            </div>
+            <p style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--text-muted);">
+              Selamat datang di panel admin. Gunakan menu di kiri untuk mengelola produk dan pesanan.
+            </p>
+          </div>
+
+          <!-- PRODUCTS -->
+          <div class="admin-content admin-section" id="section-products">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2rem;">
+              <h2 style="font-size:1.75rem;font-weight:800;letter-spacing:-.04em;text-transform:uppercase;">Produk</h2>
+              <button class="btn-primary" onclick="openProductForm(null)">
+                <i data-lucide="plus" class="icon"></i> Tambah Produk
+              </button>
+            </div>
+            <div id="product-form-wrap"></div>
+            <div id="admin-product-list"><div class="spinner"></div></div>
+          </div>
+
+          <!-- ORDERS -->
+          <div class="admin-content admin-section" id="section-orders">
+            <h2 style="font-size:1.75rem;font-weight:800;letter-spacing:-.04em;text-transform:uppercase;margin-bottom:2rem;">Pesanan</h2>
+            <div id="admin-order-list"><div class="spinner"></div></div>
+          </div>
+        </main>
+      </div>
+    </div>`;
+
+  lucide.createIcons();
+  loadAdminData();
+}
+
+function showAdminSection(name) {
+  document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.admin-nav-item').forEach(b => b.classList.remove('active'));
+  document.getElementById('section-' + name).classList.add('active');
+  document.getElementById('nav-' + name).classList.add('active');
+}
+
+async function loadAdminData() {
+  const [{ data: prods }, { data: ords }] = await Promise.all([
+    sb.from('products').select('*').order('created_at', { ascending: false }),
+    sb.from('orders').select('*').order('created_at', { ascending: false }),
+  ]);
+  _adminProducts = (prods || []).map(mapProduct);
+  _adminOrders = ords || [];
+  renderAdminStats();
+  renderAdminProducts();
+  renderAdminOrders();
+}
+
+function renderAdminStats() {
+  const revenue = _adminOrders.filter(o => o.payment_status === 'paid').reduce((s,o) => s + Number(o.total), 0);
+  document.getElementById('stat-products').textContent = _adminProducts.length;
+  document.getElementById('stat-orders').textContent = _adminOrders.length;
+  document.getElementById('stat-revenue').textContent = formatRupiah(revenue);
+}
+
+// --- PRODUCT FORM ---
+function openProductForm(id) {
+  _editingProductId = id;
+  const p = id ? _adminProducts.find(x => x.id === id) : null;
+  document.getElementById('product-form-wrap').innerHTML = `
+    <div class="product-form">
+      <p class="product-form-title">${p ? 'Edit Produk' : 'Tambah Produk Baru'}</p>
+      <div class="product-form-grid">
+        <div>
+          <label class="form-label">Nama Produk *</label>
+          <input class="form-input" id="pf-name" value="${p?.name||''}" placeholder="Nama produk" required>
+        </div>
+        <div>
+          <label class="form-label">Kategori *</label>
+          <select class="form-input" id="pf-category">
+            ${['jackets','tees','knitwear','denim','accessories'].map(c =>
+              `<option value="${c}" ${p?.category===c?'selected':''}>${c}</option>`
+            ).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Harga (Rp) *</label>
+          <input class="form-input" id="pf-price" type="text" inputmode="text" value="${p?.price || ''}" placeholder="190000 / 190.000 / 190K" required style="text-transform:none;letter-spacing:.05em;">
+        </div>
+        <div>
+          <label class="form-label">Ukuran *</label>
+          <input class="form-input" id="pf-size" value="${p?.size||''}" placeholder="M / L / XL / 32W">
+        </div>
+        <div>
+          <label class="form-label">Skor Kondisi (0–10) *</label>
+          <input class="form-input" id="pf-condition-score" type="number" min="0" max="10" step="0.1" value="${p?.conditionScore||9}" placeholder="9.0">
+        </div>
+        <div>
+          <label class="form-label">Label Kondisi *</label>
+          <input class="form-input" id="pf-condition-label" value="${p?.conditionLabel||''}" placeholder="Near Mint / Excellent">
+        </div>
+        <div>
+          <label class="form-label">Era *</label>
+          <input class="form-input" id="pf-era" value="${p?.era||''}" placeholder="c. 1992">
+        </div>
+        <div>
+          <label class="form-label">Tag Asal *</label>
+          <input class="form-input" id="pf-origin" value="${p?.tagOrigin||''}" placeholder="Made in USA">
+        </div>
+        <div style="grid-column:1/-1;">
+          <label class="form-label">Foto Produk * <span style="font-weight:400;opacity:.6;">(maks 4 foto · maks 1 MB per foto · otomatis dikompres)</span></label>
+          <div id="photos-grid" class="photos-grid"></div>
+          <div id="upload-status" style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);margin-top:.5rem;min-height:1.2em;"></div>
+          <!-- hidden: JSON array of uploaded URLs -->
+          <input type="hidden" id="pf-images-json" value="${JSON.stringify(
+            p?.images?.length ? p.images : (p?.image ? [p.image] : [])
+          ).replace(/"/g,'&quot;')}">
+        </div>
+        <div style="grid-column:1/-1;">
+          <label class="form-label">Deskripsi *</label>
+          <textarea class="form-input" id="pf-desc" rows="3" placeholder="Deskripsi produk...">${p?.description||''}</textarea>
+        </div>
+        <div style="grid-column:1/-1;">
+          <label class="form-label">Fitur (pisahkan dengan koma)</label>
+          <input class="form-input" id="pf-features" value="${p?.features?.join(', ')||''}" placeholder="Original buttons, Deadstock label, ...">
+        </div>
+        <div>
+          <label class="form-label">Sold Out?</label>
+          <select class="form-input" id="pf-soldout">
+            <option value="false" ${!p?.isSoldOut?'selected':''}>Tersedia</option>
+            <option value="true" ${p?.isSoldOut?'selected':''}>Sold Out</option>
+          </select>
+        </div>
+      </div>
+      <div class="product-form-actions">
+        <button class="btn-outline" onclick="closeProductForm()">Batal</button>
+        <button class="btn-primary" onclick="saveProduct()">
+          <i data-lucide="save" class="icon"></i> ${p ? 'Update Produk' : 'Simpan Produk'}
+        </button>
+      </div>
+    </div>`;
+  lucide.createIcons();
+  initPhotosGrid();
+  document.getElementById('product-form-wrap').scrollIntoView({ behavior: 'smooth' });
+}
+
+function closeProductForm() {
+  document.getElementById('product-form-wrap').innerHTML = '';
+  _editingProductId = null;
+}
+
+async function saveProduct() {
+  const name = document.getElementById('pf-name').value.trim();
+  const price = parseHarga(document.getElementById('pf-price').value);
+  if (!name || !price) { showToast('Nama dan harga wajib diisi.'); return; }
+
+  const category = document.getElementById('pf-category').value;
+  const data = {
+    name,
+    category,
+    category_label: category.charAt(0).toUpperCase() + category.slice(1),
+    price,
+    size: document.getElementById('pf-size').value.trim(),
+    condition_score: parseFloat(document.getElementById('pf-condition-score').value) || 9,
+    condition_label: document.getElementById('pf-condition-label').value.trim(),
+    era: document.getElementById('pf-era').value.trim(),
+    tag_origin: document.getElementById('pf-origin').value.trim(),
+    image: '', // legacy — akan di-set di bawah
+    images: [],
+    description: document.getElementById('pf-desc').value.trim(),
+    features: document.getElementById('pf-features').value.split(',').map(s => s.trim()).filter(Boolean),
+    is_sold_out: document.getElementById('pf-soldout').value === 'true',
+    measurements: {},
+  };
+
+  // Ambil array foto dari hidden input
+  try {
+    const imgs = JSON.parse(document.getElementById('pf-images-json').value);
+    data.images = imgs.filter(Boolean);
+    data.image = data.images[0] || ''; // kolom lama = foto pertama
+  } catch { data.images = []; }
+
+  if (!data.images.length) { showToast('Minimal 1 foto harus diupload.'); return; }
+
+  let error;
+  if (_editingProductId) {
+    ({ error } = await sb.from('products').update(data).eq('id', _editingProductId));
+  } else {
+    ({ error } = await sb.from('products').insert(data));
+  }
+
+  if (error) { showToast('Gagal menyimpan: ' + error.message); return; }
+  showToast(_editingProductId ? 'Produk diupdate!' : 'Produk ditambahkan!');
+  closeProductForm();
+  loadAdminData();
+}
+
+function renderAdminProducts() {
+  const list = document.getElementById('admin-product-list');
+  if (!_adminProducts.length) {
+    list.innerHTML = `<div class="admin-empty">Belum ada produk. Klik "Tambah Produk" untuk mulai.</div>`;
+    return;
+  }
+  list.innerHTML = _adminProducts.map(p => `
+    <div class="admin-product-row">
+      <img class="admin-product-img" src="${p.images?.[0] || p.image}" referrerpolicy="no-referrer" onerror="this.style.background='#eee';this.src=''">
+      <div class="admin-product-info">
+        <p class="admin-product-name">${p.name}</p>
+        <p class="admin-product-meta">${p.category} · ${p.era} · ${p.size} · COND: ${p.conditionScore}/10 ${p.isSoldOut?'· SOLD OUT':''}</p>
+      </div>
+      <span class="admin-product-price">${formatRupiah(p.price)}</span>
+      <div class="admin-product-actions">
+        <button class="btn-icon" onclick="openProductForm('${p.id}')" title="Edit">
+          <i data-lucide="edit" class="icon"></i>
+        </button>
+        <button class="btn-icon" onclick="toggleSoldOut('${p.id}',${p.isSoldOut})" title="${p.isSoldOut?'Tersedia':'Sold Out'}">
+          <i data-lucide="${p.isSoldOut?'circle-check':'circle-x'}" class="icon"></i>
+        </button>
+        <button class="btn-icon" onclick="deleteProduct('${p.id}')" title="Hapus" style="color:#dc2626;">
+          <i data-lucide="trash-2" class="icon"></i>
+        </button>
+      </div>
+    </div>`).join('');
+  lucide.createIcons();
+}
+
+async function toggleSoldOut(id, current) {
+  await sb.from('products').update({ is_sold_out: !current }).eq('id', id);
+  showToast(!current ? 'Ditandai Sold Out' : 'Kembali tersedia');
+  loadAdminData();
+}
+
+async function deleteProduct(id) {
+  if (!confirm('Hapus produk ini permanen?')) return;
+  const { error } = await sb.from('products').delete().eq('id', id);
+  if (error) { showToast('Gagal hapus: ' + error.message); return; }
+  showToast('Produk dihapus.');
+  loadAdminData();
+}
+
+// --- ORDERS ---
+const STEP_KEYS = ['payment_confirmed','sanitizing_curation','eco_packing','handed_to_courier','in_transit_hub','out_for_delivery','delivered'];
+
+function renderAdminOrders() {
+  const list = document.getElementById('admin-order-list');
+  if (!_adminOrders.length) {
+    list.innerHTML = `<div class="admin-empty">Belum ada pesanan masuk.</div>`;
+    return;
+  }
+  list.innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>No. Resi</th><th>Customer</th><th>Items</th>
+          <th>Total</th><th>Payment</th><th>Status</th><th>Aksi</th>
+        </tr></thead>
+        <tbody>
+          ${_adminOrders.map(o => {
+            const stepIdx = STEP_KEYS.indexOf(o.current_step);
+            const isDone = o.current_step === 'delivered';
+            return `<tr>
+              <td><span style="font-family:var(--font-mono);font-size:11px;font-weight:700;">${o.tracking_number}</span><br><span style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted);">${formatDate(o.created_at)}</span></td>
+              <td>${o.customer?.fullName||'-'}<br><span style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted);">${o.customer?.city||''}</span></td>
+              <td style="font-family:var(--font-mono);font-size:11px;">${(o.items||[]).length} item</td>
+              <td style="font-family:var(--font-mono);font-size:11px;font-weight:700;">${formatRupiah(o.total)}</td>
+              <td><span class="status-badge status-${o.payment_status}">${o.payment_status}</span></td>
+              <td><span style="font-family:var(--font-mono);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;">${(o.current_step||'').replace(/_/g,' ')}</span></td>
+              <td style="display:flex;gap:6px;align-items:center;">
+                ${o.payment_status === 'pending' ? `<button class="btn-outline" style="padding:5px 10px;font-size:9px;" onclick="confirmPayment('${o.id}')"><i data-lucide="check" class="icon icon-sm"></i> Bayar</button>` : ''}
+                ${!isDone ? `<button class="btn-outline" style="padding:5px 10px;font-size:9px;" onclick="advanceOrder('${o.id}','${o.current_step}')"><i data-lucide="chevron-right" class="icon icon-sm"></i> Next</button>` : '<span style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted);">Done</span>'}
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  lucide.createIcons();
+}
+
+async function confirmPayment(id) {
+  await sb.from('orders').update({ payment_status: 'paid' }).eq('id', id);
+  showToast('Pembayaran dikonfirmasi!');
+  loadAdminData();
+}
+
+async function advanceOrder(id, currentStep) {
+  const idx = STEP_KEYS.indexOf(currentStep);
+  if (idx < 0 || idx >= STEP_KEYS.length - 1) return;
+  const nextStep = STEP_KEYS[idx + 1];
+
+  const { data: order } = await sb.from('orders').select('timeline').eq('id', id).single();
+  const timeline = (order?.timeline || []).map(e => {
+    if (e.step === nextStep) return { ...e, completed: true, timestamp: new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})+' WIB' };
+    return e;
+  });
+
+  await sb.from('orders').update({ current_step: nextStep, timeline }).eq('id', id);
+  showToast('Status pesanan diupdate!');
+  loadAdminData();
+}
+
+async function adminLogout() {
+  await sb.auth.signOut();
+  location.reload();
+}
+
+// ============================================================
+// PARSE HARGA — mendukung: 190000, 190.000, 190,000, 190K, 1.9jt, 1900rb
+// ============================================================
+function parseHarga(raw) {
+  if (!raw) return 0;
+  const s = String(raw).trim().toLowerCase();
+
+  // Shorthand suffix: k/rb/ribu = x1000, jt/juta/m = x1000000
+  const m = s.match(/^([\d]+(?:[.,][\d]+)?)\s*(k|rb|ribu|jt|juta|m)$/);
+  if (m) {
+    // angka bagian depan — ganti koma ke titik untuk parseFloat
+    const num = parseFloat(m[1].replace(',', '.'));
+    const suf = m[2];
+    if (['k','rb','ribu'].includes(suf)) return Math.round(num * 1000);
+    if (['jt','juta','m'].includes(suf)) return Math.round(num * 1000000);
+  }
+
+  // Format angka biasa: buang semua karakter non-digit, lalu parseInt
+  // Ini sengaja mengabaikan desimal karena harga Rupiah selalu bulat
+  const digits = s.replace(/[^0-9]/g, '');
+  return parseInt(digits, 10) || 0;
+}
+
+// ============================================================
+// IMAGE UPLOAD + AUTO-COMPRESS (max 1 MB per foto, max 4 foto)
+// ============================================================
+
+const MAX_FILE_BYTES = 1 * 1024 * 1024; // 1 MB
+const MAX_PHOTOS    = 4;
+
+/** Kompres file gambar ke JPEG <= maxBytes. Returns Blob. */
+async function compressImage(file, maxBytes = MAX_FILE_BYTES) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      let { width, height } = img;
+      const MAX_DIM = 1600;
+      if (width > MAX_DIM || height > MAX_DIM) {
+        const ratio = Math.min(MAX_DIM / width, MAX_DIM / height);
+        width  = Math.round(width  * ratio);
+        height = Math.round(height * ratio);
+      }
+      canvas.width  = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+
+      let lo = 0.1, hi = 0.92, attempts = 0;
+      const tryQ = q => new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', q));
+
+      (async () => {
+        const full = await tryQ(hi);
+        if (full.size <= maxBytes) { resolve(full); return; }
+        while (attempts < 10 && hi - lo > 0.02) {
+          const mid = (lo + hi) / 2;
+          const blob = await tryQ(mid);
+          if (blob.size <= maxBytes) lo = mid; else hi = mid;
+          attempts++;
+        }
+        resolve(await tryQ(lo));
+      })();
+    };
+    img.src = url;
+  });
+}
+
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(2) + ' MB';
+}
+
+/** Baca array URL dari hidden input */
+function getPhotoUrls() {
+  try { return JSON.parse(document.getElementById('pf-images-json').value); }
+  catch { return []; }
+}
+
+/** Simpan array URL ke hidden input dan re-render grid */
+function setPhotoUrls(arr) {
+  document.getElementById('pf-images-json').value = JSON.stringify(arr);
+  renderPhotosGrid(arr);
+}
+
+/** Render 4 slot foto */
+function renderPhotosGrid(urls) {
+  const grid = document.getElementById('photos-grid');
+  if (!grid) return;
+  let html = '';
+  // Slot yang sudah ada foto
+  urls.forEach((url, i) => {
+    html += `
+      <div class="photo-slot" id="slot-${i}">
+        <img src="${url}" alt="foto ${i+1}">
+        <span class="photo-slot-num">FOTO ${i+1}${i===0?' · UTAMA':''}</span>
+        <button class="photo-slot-remove" onclick="removePhoto(${i})" title="Hapus foto">✕</button>
+      </div>`;
+  });
+  // Slot kosong (tambah)
+  if (urls.length < MAX_PHOTOS) {
+    const idx = urls.length;
+    html += `
+      <div class="photo-slot" id="slot-add" onclick="triggerPhotoPick()">
+        <div class="photo-slot-placeholder">
+          <i data-lucide="image-plus" class="icon"></i>
+          <span>Tambah<br>Foto</span>
+        </div>
+      </div>`;
+  }
+  grid.innerHTML = html;
+  if (window.lucide) lucide.createIcons();
+}
+
+/** Panggil input file */
+function triggerPhotoPick() {
+  const urls = getPhotoUrls();
+  if (urls.length >= MAX_PHOTOS) { showToast('Maksimal 4 foto per produk.'); return; }
+  let inp = document.getElementById('pf-photo-file-input');
+  if (!inp) {
+    inp = document.createElement('input');
+    inp.type = 'file';
+    inp.id = 'pf-photo-file-input';
+    inp.accept = 'image/jpeg,image/png,image/webp,image/gif';
+    inp.style.display = 'none';
+    inp.multiple = false;
+    inp.addEventListener('change', handlePhotoPick);
+    document.body.appendChild(inp);
+  }
+  inp.value = '';
+  inp.click();
+}
+
+/** Handle setelah user pilih file */
+async function handlePhotoPick(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const urls   = getPhotoUrls();
+  if (urls.length >= MAX_PHOTOS) { showToast('Maksimal 4 foto.'); return; }
+
+  const statusEl = document.getElementById('upload-status');
+  const slotAdd  = document.getElementById('slot-add');
+  if (slotAdd) slotAdd.innerHTML = `<div class="photo-slot-uploading">UPLOAD...</div>`;
+
+  statusEl.textContent = `📁 ${file.name} (${formatBytes(file.size)}) — memproses...`;
+
+  let blob = file;
+  if (file.size > MAX_FILE_BYTES) {
+    statusEl.textContent = `🔧 Mengompres ${formatBytes(file.size)} → maks 1 MB...`;
+    blob = await compressImage(file, MAX_FILE_BYTES);
+    statusEl.textContent = `✅ Dikompres: ${formatBytes(file.size)} → ${formatBytes(blob.size)} — mengupload...`;
+  } else {
+    statusEl.textContent = `📤 Mengupload ${formatBytes(blob.size)}...`;
+  }
+
+  const fileName = `product_${Date.now()}_${Math.random().toString(36).slice(2,7)}.jpg`;
+  const { data, error } = await sb.storage
+    .from('product-images')
+    .upload(fileName, blob, { contentType: 'image/jpeg', upsert: false });
+
+  if (error) {
+    statusEl.textContent = `❌ Upload gagal: ${error.message}`;
+    renderPhotosGrid(urls); // restore grid
+    return;
+  }
+
+  const { data: { publicUrl } } = sb.storage.from('product-images').getPublicUrl(data.path);
+  const newUrls = [...urls, publicUrl];
+  setPhotoUrls(newUrls);
+  statusEl.textContent = `✅ Foto ${newUrls.length}/${MAX_PHOTOS} berhasil diupload · ${formatBytes(blob.size)}`;
+}
+
+/** Hapus foto dari slot index i */
+function removePhoto(i) {
+  const urls = getPhotoUrls();
+  urls.splice(i, 1);
+  setPhotoUrls(urls);
+  document.getElementById('upload-status').textContent = '';
+}
+
+/** Init grid saat form pertama kali dibuka */
+function initPhotosGrid() {
+  try {
+    const existing = JSON.parse(document.getElementById('pf-images-json').value);
+    renderPhotosGrid(existing);
+  } catch { renderPhotosGrid([]); }
+}
+
+initAdmin();
+</script>
+</body>
+</html>

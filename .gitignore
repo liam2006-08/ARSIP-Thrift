@@ -1,0 +1,5 @@
+# Jangan upload ke GitHub
+node_modules/
+.env
+.DS_Store
+Thumbs.db

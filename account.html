@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Akun Saya · ARSIP.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="js/style.css">
+</head>
+<body>
+<div id="nav-root"></div>
+
+<div class="container" style="padding-top:3rem;padding-bottom:5rem;" id="account-root">
+  <div class="spinner"></div>
+</div>
+
+<footer id="footer">
+  <div class="container">
+    <div class="footer-bottom" style="border-top:1px solid var(--border);padding:2rem 0;">
+      <span class="footer-copy">© <span id="footer-year"></span> ARSIP.</span>
+    </div>
+  </div>
+</footer>
+
+<div id="auth-root"></div>
+<div id="cart-root"></div>
+<div id="toast" class="toast hidden"></div>
+
+<script src="js/config.js"></script>
+<script>
+document.getElementById('nav-root').innerHTML = buildNavbar({ activePage: 'account' });
+document.getElementById('auth-root').innerHTML = buildAuthModal();
+document.getElementById('cart-root').innerHTML = buildCartDrawer();
+document.getElementById('footer-year').textContent = new Date().getFullYear();
+applyDarkMode();
+updateCartBadge();
+renderNavAuth();
+lucide.createIcons();
+
+let _accountUser = null;
+let _accountOrders = [];
+
+async function initAccount() {
+  _accountUser = await getCurrentUser();
+  if (!_accountUser) {
+    document.getElementById('account-root').innerHTML = `
+      <div style="text-align:center;padding:5rem 2rem;">
+        <div style="width:64px;height:64px;background:var(--border);display:flex;align-items:center;justify-content:center;margin:0 auto 1.5rem;">
+          <i data-lucide="user" class="icon icon-lg muted"></i>
+        </div>
+        <h2 style="font-size:1.5rem;font-weight:800;letter-spacing:-.04em;text-transform:uppercase;margin-bottom:.75rem;">Belum Login</h2>
+        <p style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:var(--text-muted);margin-bottom:2rem;">Silakan masuk untuk melihat akun dan riwayat pesanan kamu.</p>
+        <button class="btn-primary" onclick="openAuthModal()"><i data-lucide="log-in" class="icon"></i> Masuk / Daftar</button>
+      </div>`;
+    lucide.createIcons();
+    return;
+  }
+  loadAccountData();
+}
+
+async function loadAccountData() {
+  const [ordersResult, profileResult] = await Promise.all([
+    sb.from('orders').select('*')
+      .or(`customer->>userId.eq.${_accountUser.id},customer->>email.eq.${_accountUser.email}`)
+      .order('created_at', { ascending: false }),
+    sb.from('users').select('*').eq('id', _accountUser.id).single(),
+  ]);
+  _accountOrders = ordersResult.data || [];
+  const profile = profileResult.data || {};
+  renderAccount(profile);
+}
+
+function renderAccount(profile) {
+  const user = _accountUser;
+  const name = user.user_metadata?.full_name || profile.full_name || user.email?.split('@')[0] || 'Collector';
+  const initials = name.charAt(0).toUpperCase();
+  const avatarUrl = user.user_metadata?.avatar_url;
+
+  document.getElementById('account-root').innerHTML = `
+    <div class="account-profile-header">
+      <div style="display:flex;align-items:center;gap:1.5rem;">
+        <div class="account-avatar">
+          ${avatarUrl ? `<img src="${avatarUrl}" alt="${name}">` : `<span class="account-avatar-initials">${initials}</span>`}
+        </div>
+        <div>
+          <h1 class="account-name">${name}</h1>
+          <p class="account-email">${user.email}</p>
+        </div>
+      </div>
+      <button class="btn-outline" onclick="accountLogout()">
+        <i data-lucide="log-out" class="icon"></i> Keluar
+      </button>
+    </div>
+
+    <div class="tabs" id="account-tabs">
+      <button class="tab-btn active" onclick="switchTab('orders',this)">Archive History</button>
+      <button class="tab-btn" onclick="switchTab('profile',this)">Shipping Data</button>
+    </div>
+
+    <div class="account-layout">
+      <div>
+        <!-- ORDERS TAB -->
+        <div id="tab-orders">
+          <h2 style="font-size:1.25rem;font-weight:800;letter-spacing:-.04em;text-transform:uppercase;margin-bottom:1.5rem;display:flex;align-items:center;gap:.75rem;">
+            <i data-lucide="package" class="icon"></i> Riwayat Pesanan
+          </h2>
+          ${_accountOrders.length === 0
+            ? `<div style="text-align:center;padding:4rem 2rem;border:1px solid var(--border);background:var(--bg-card);">
+                <i data-lucide="shopping-bag" class="icon icon-xl muted" style="margin-bottom:1rem;"></i>
+                <p style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--text-muted);">Belum ada pesanan.</p>
+              </div>`
+            : _accountOrders.map(o => `
+            <div class="order-card" onclick="window.location.href='tracker.html?resi=${o.tracking_number}'">
+              <div style="display:flex;align-items:center;gap:1rem;flex:1;min-width:0;">
+                <div style="display:flex;gap:-8px;">
+                  ${(o.items||[]).slice(0,3).map(it => `<img class="order-card-img" src="${it.image||''}" referrerpolicy="no-referrer" onerror="this.style.display='none'">`).join('')}
+                </div>
+                <div class="order-card-info">
+                  <p class="order-id">Order #${o.tracking_number}</p>
+                  <p class="order-meta">${(o.items||[]).length} item · ${formatRupiah(o.total)} · ${formatDate(o.created_at)}</p>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:1rem;flex-shrink:0;">
+                <div style="text-align:right;">
+                  <p style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:var(--text-muted);margin-bottom:3px;">Status</p>
+                  <p style="font-family:var(--font-mono);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;">${o.current_step.replace(/_/g,' ')}</p>
+                </div>
+                <i data-lucide="chevron-right" class="icon muted"></i>
+              </div>
+            </div>`).join('')
+          }
+        </div>
+
+        <!-- PROFILE TAB -->
+        <div id="tab-profile" class="hidden">
+          <h2 style="font-size:1.25rem;font-weight:800;letter-spacing:-.04em;text-transform:uppercase;margin-bottom:1.5rem;display:flex;align-items:center;gap:.75rem;">
+            <i data-lucide="user" class="icon"></i> Default Shipping Data
+          </h2>
+          <form onsubmit="saveProfile(event)" style="background:var(--bg-card);border:1px solid var(--border);padding:2rem;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+              <div>
+                <label class="form-label">Nama Lengkap</label>
+                <input class="form-input" id="profile-name" value="${profile.full_name||''}" placeholder="Nama penerima">
+              </div>
+              <div>
+                <label class="form-label">Nomor Telepon</label>
+                <input class="form-input" id="profile-phone" value="${profile.phone||''}" type="tel" placeholder="08xx">
+              </div>
+              <div style="grid-column:1/-1;">
+                <label class="form-label">Alamat Lengkap</label>
+                <textarea class="form-input" id="profile-address" rows="3" placeholder="Jalan, RT/RW...">${profile.address||''}</textarea>
+              </div>
+              <div>
+                <label class="form-label">Kota</label>
+                <input class="form-input" id="profile-city" value="${profile.city||''}" placeholder="Jakarta">
+              </div>
+              <div>
+                <label class="form-label">Kode Pos</label>
+                <input class="form-input" id="profile-postal" value="${profile.postal_code||''}" placeholder="12345">
+              </div>
+            </div>
+            <button type="submit" class="btn-primary" id="save-profile-btn">
+              <i data-lucide="save" class="icon"></i> Simpan Profil
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Sidebar Membership -->
+      <div>
+        <div class="membership-card">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:1.5rem;">
+            <i data-lucide="sparkles" class="icon" style="color:rgba(255,255,255,.5);"></i>
+            <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;">Membership</span>
+          </div>
+          <div style="margin-bottom:1rem;">
+            <span class="membership-label">Member Sejak</span>
+            <span class="membership-value">${new Date(user.created_at||Date.now()).getFullYear()}</span>
+          </div>
+          <div style="margin-bottom:1.5rem;">
+            <span class="membership-label">Curation Tier</span>
+            <span class="membership-value">Archive Enthusiast</span>
+          </div>
+          <div style="border-top:1px solid rgba(255,255,255,.15);padding-top:1rem;">
+            <p style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;opacity:.5;line-height:1.8;">
+              Member mendapat notifikasi early access untuk "Selection Drop" via email terverifikasi.
+            </p>
+          </div>
+        </div>
+
+        ${isAdmin(_accountUser) ? `
+        <a href="admin.html" class="btn-primary btn-full mt-md" style="justify-content:center;">
+          <i data-lucide="lock" class="icon"></i> Buka Admin Panel
+        </a>` : ''}
+      </div>
+    </div>`;
+
+  lucide.createIcons();
+}
+
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-orders').classList.toggle('hidden', tab !== 'orders');
+  document.getElementById('tab-profile').classList.toggle('hidden', tab !== 'profile');
+}
+
+async function saveProfile(e) {
+  e.preventDefault();
+  const btn = document.getElementById('save-profile-btn');
+  btn.disabled = true;
+
+  const profileData = {
+    id: _accountUser.id,
+    email: _accountUser.email,
+    full_name: document.getElementById('profile-name').value.trim(),
+    phone: document.getElementById('profile-phone').value.trim(),
+    address: document.getElementById('profile-address').value.trim(),
+    city: document.getElementById('profile-city').value.trim(),
+    postal_code: document.getElementById('profile-postal').value.trim(),
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await sb.from('users').upsert(profileData);
+  btn.disabled = false;
+  if (error) { showToast('Gagal menyimpan: ' + error.message); return; }
+  showToast('Profil tersimpan! ✓');
+}
+
+async function accountLogout() {
+  await sb.auth.signOut();
+  window.location.href = 'index.html';
+}
+
+initAccount();
+</script>
+</body>
+</html>

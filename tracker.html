@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Lacak Pesanan · ARSIP.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="js/style.css">
+  <style>
+    .tracker-page { max-width: 860px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+
+    /* Order card ringkas */
+    .order-track-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      margin-bottom: 1.25rem;
+      overflow: hidden;
+      transition: box-shadow .2s;
+    }
+    .order-track-card:hover { box-shadow: var(--shadow-md); }
+
+    .order-track-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      gap: 1rem;
+    }
+    .order-track-resi {
+      font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+      letter-spacing: .1em; text-transform: uppercase;
+    }
+    .order-track-date {
+      font-family: var(--font-mono); font-size: 9px; color: var(--text-muted);
+      font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+    }
+
+    /* Status bar bergaya Shopee */
+    .order-status-bar {
+      padding: 1rem 1.25rem;
+      background: color-mix(in srgb, var(--text) 4%, transparent);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 1rem;
+    }
+    .order-status-icon {
+      width: 40px; height: 40px; flex-shrink: 0;
+      background: var(--primary); color: var(--primary-text);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .order-status-label {
+      font-size: 13px; font-weight: 800; letter-spacing: -.02em;
+      text-transform: uppercase; margin-bottom: 2px;
+    }
+    .order-status-desc {
+      font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+      letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted);
+    }
+
+    /* Progress steps bergaya Shopee */
+    .track-steps {
+      display: flex; align-items: flex-start;
+      padding: 1.25rem 1.25rem 0;
+      overflow-x: auto;
+      gap: 0;
+    }
+    .track-step {
+      display: flex; flex-direction: column; align-items: center;
+      flex: 1; min-width: 80px; position: relative;
+    }
+    .track-step + .track-step::before {
+      content: '';
+      position: absolute; top: 11px; right: 50%; left: -50%;
+      height: 2px; background: var(--border);
+    }
+    .track-step.done + .track-step::before,
+    .track-step.current + .track-step::before { background: var(--primary); }
+    .track-step-dot {
+      width: 24px; height: 24px; border-radius: 50%;
+      border: 2px solid var(--border); background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      position: relative; z-index: 1; flex-shrink: 0;
+      transition: all .2s;
+    }
+    .track-step.done .track-step-dot {
+      background: var(--primary); border-color: var(--primary);
+    }
+    .track-step.current .track-step-dot {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 20%, transparent);
+    }
+    .track-step-label {
+      font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+      letter-spacing: .08em; text-transform: uppercase;
+      color: var(--text-muted); text-align: center; margin-top: 6px;
+      line-height: 1.3; max-width: 72px;
+    }
+    .track-step.done .track-step-label,
+    .track-step.current .track-step-label { color: var(--text); }
+
+    /* Info kurir + lokasi */
+    .order-courier-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: .875rem 1.25rem;
+      border-top: 1px solid var(--border);
+      flex-wrap: wrap; gap: .5rem;
+    }
+    .courier-info { display: flex; align-items: center; gap: .75rem; }
+    .courier-badge {
+      background: var(--primary); color: var(--primary-text);
+      font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+      letter-spacing: .15em; padding: 3px 8px; text-transform: uppercase;
+    }
+    .courier-tracking {
+      font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+      letter-spacing: .05em; color: var(--text-muted);
+    }
+    .courier-eta {
+      font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+      letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted);
+      text-align: right;
+    }
+    .courier-eta strong { color: var(--text); display: block; font-size: 11px; }
+
+    /* Item list di dalam card */
+    .order-items-row {
+      display: flex; gap: .5rem; padding: .875rem 1.25rem 1.25rem;
+      border-top: 1px solid var(--border); flex-wrap: wrap;
+      align-items: center; justify-content: space-between;
+    }
+    .order-items-imgs { display: flex; gap: 6px; }
+    .order-item-thumb {
+      width: 48px; height: 56px; object-fit: cover;
+      border: 1px solid var(--border); filter: grayscale(.3);
+    }
+    .order-items-meta {
+      font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+      letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted);
+    }
+    .order-items-total {
+      font-family: var(--font-mono); font-size: 13px; font-weight: 700;
+    }
+
+    /* Search box untuk cari manual */
+    .tracker-search-box {
+      background: var(--bg-card); border: 1px solid var(--border);
+      padding: 1.5rem; margin-bottom: 2rem;
+    }
+    .tracker-search-row { display: flex; gap: .75rem; }
+
+    /* Tab aktif / riwayat */
+    .tracker-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; }
+    .tracker-tab {
+      padding: 10px 0; margin-right: 2rem;
+      font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+      letter-spacing: .2em; text-transform: uppercase;
+      color: var(--text-muted); border-bottom: 2px solid transparent;
+      cursor: pointer; background: none; border-top: none; border-left: none; border-right: none;
+      transition: color .15s, border-color .15s;
+    }
+    .tracker-tab.active { color: var(--text); border-bottom-color: var(--text); }
+  </style>
+</head>
+<body>
+<div id="nav-root"></div>
+
+<div class="tracker-page">
+  <div class="page-header">
+    <h1 class="page-title">Lacak Pesanan</h1>
+    <p class="page-subtitle" id="tracker-subtitle">Memuat pesanan kamu...</p>
+  </div>
+
+  <div id="tracker-root"><div class="spinner"></div></div>
+</div>
+
+<footer id="footer">
+  <div class="container">
+    <div class="footer-bottom" style="border-top:1px solid var(--border);padding:2rem 0;">
+      <span class="footer-copy">© <span id="footer-year"></span> ARSIP.</span>
+      <div class="footer-links">
+        <a href="index.html" style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--text-muted);">← Kembali ke Toko</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<div id="auth-root"></div>
+<div id="cart-root"></div>
+<div id="toast" class="toast hidden"></div>
+
+<script src="js/config.js"></script>
+<script>
+document.getElementById('nav-root').innerHTML = buildNavbar({ activePage: 'tracker' });
+document.getElementById('auth-root').innerHTML = buildAuthModal();
+document.getElementById('cart-root').innerHTML = buildCartDrawer();
+document.getElementById('footer-year').textContent = new Date().getFullYear();
+applyDarkMode();
+updateCartBadge();
+renderNavAuth();
+lucide.createIcons();
+
+// Steps untuk progress bar
+const TRACK_STEPS_DISPLAY = [
+  { key: 'payment_confirmed',   short: 'Bayar' },
+  { key: 'sanitizing_curation', short: 'Kurasi' },
+  { key: 'eco_packing',         short: 'Packing' },
+  { key: 'handed_to_courier',   short: 'Kurir' },
+  { key: 'in_transit_hub',      short: 'Transit' },
+  { key: 'out_for_delivery',    short: 'Diantar' },
+  { key: 'delivered',           short: 'Terkirim' },
+];
+
+let _allOrders = [];
+let _activeTab = 'active';
+
+async function initTracker() {
+  const user = await getCurrentUser();
+  const root = document.getElementById('tracker-root');
+  const subtitle = document.getElementById('tracker-subtitle');
+
+  // Cek URL param dulu (redirect dari checkout)
+  const urlResi = new URLSearchParams(location.search).get('resi');
+
+  if (!user) {
+    // Guest: tampilkan search box saja
+    subtitle.textContent = 'Masukkan nomor resi untuk melihat status pengiriman kamu.';
+    root.innerHTML = renderSearchBox(urlResi || '');
+    lucide.createIcons();
+    if (urlResi) setTimeout(searchOrder, 300);
+    return;
+  }
+
+  // User login: load semua pesanan milik dia
+  subtitle.textContent = 'Semua pesanan kamu ditampilkan di bawah.';
+
+  const { data, error } = await sb.from('orders')
+    .select('*')
+    .or(`customer->>userId.eq.${user.id},customer->>email.eq.${user.email}`)
+    .order('created_at', { ascending: false });
+
+  _allOrders = data || [];
+
+  if (!_allOrders.length && !urlResi) {
+    root.innerHTML = `
+      ${renderSearchBox('')}
+      <div style="text-align:center;padding:3rem;border:1px solid var(--border);background:var(--bg-card);">
+        <i data-lucide="package-search" class="icon icon-xl muted" style="margin-bottom:1rem;display:block;margin-left:auto;margin-right:auto;"></i>
+        <p style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--text-muted);">Belum ada pesanan.</p>
+      </div>`;
+    lucide.createIcons();
+    return;
+  }
+
+  renderAllOrders(urlResi);
+  if (urlResi) {
+    // Scroll ke order yang dimaksud
+    setTimeout(() => {
+      const el = document.getElementById('order-' + urlResi);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 400);
+  }
+}
+
+function renderAllOrders(highlightResi) {
+  const root = document.getElementById('tracker-root');
+  const active = _allOrders.filter(o => o.current_step !== 'delivered');
+  const done   = _allOrders.filter(o => o.current_step === 'delivered');
+
+  root.innerHTML = `
+    ${renderSearchBox('')}
+    <div class="tracker-tabs">
+      <button class="tracker-tab ${_activeTab==='active'?'active':''}" onclick="switchTrackerTab('active',this)">
+        Pesanan Aktif <span style="font-family:var(--font-mono);font-size:9px;background:var(--primary);color:var(--primary-text);padding:1px 6px;margin-left:4px;">${active.length}</span>
+      </button>
+      <button class="tracker-tab ${_activeTab==='done'?'active':''}" onclick="switchTrackerTab('done',this)">
+        Selesai <span style="font-family:var(--font-mono);font-size:9px;background:var(--border);padding:1px 6px;margin-left:4px;">${done.length}</span>
+      </button>
+    </div>
+    <div id="tracker-orders-list">
+      ${renderOrderList(_activeTab === 'active' ? active : done, highlightResi)}
+    </div>`;
+  lucide.createIcons();
+}
+
+function switchTrackerTab(tab, btn) {
+  _activeTab = tab;
+  document.querySelectorAll('.tracker-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const active = _allOrders.filter(o => o.current_step !== 'delivered');
+  const done   = _allOrders.filter(o => o.current_step === 'delivered');
+  document.getElementById('tracker-orders-list').innerHTML =
+    renderOrderList(tab === 'active' ? active : done, null);
+  lucide.createIcons();
+}
+
+function renderOrderList(orders, highlightResi) {
+  if (!orders.length) return `
+    <div style="text-align:center;padding:3rem;border:1px solid var(--border);background:var(--bg-card);">
+      <p style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--text-muted);">Tidak ada pesanan di sini.</p>
+    </div>`;
+
+  return orders.map(o => renderOrderCard(o, o.tracking_number === highlightResi)).join('');
+}
+
+function renderOrderCard(order, highlight) {
+  const stepIdx = TRACK_STEPS_DISPLAY.findIndex(s => s.key === order.current_step);
+  const currentStepObj = ORDER_STEPS.find(s => s.key === order.current_step);
+  const courier = order.courier_details || order.courier || {};
+  const isPaid = order.payment_status === 'paid';
+
+  // Icon per status
+  const iconMap = {
+    payment_confirmed:   'credit-card',
+    sanitizing_curation: 'sparkles',
+    eco_packing:         'package',
+    handed_to_courier:   'truck',
+    in_transit_hub:      'map-pin',
+    out_for_delivery:    'navigation',
+    delivered:           'check-circle',
+  };
+  const icon = iconMap[order.current_step] || 'package';
+
+  // Lokasi demo per step
+  const lokasiMap = {
+    payment_confirmed:   'Pembayaran diterima · Jakarta Selatan',
+    sanitizing_curation: 'Gudang Stuff For Tuff · Kemang, Jakarta Selatan',
+    eco_packing:         'Gudang Stuff For Tuff · Kemang, Jakarta Selatan',
+    handed_to_courier:   'Diserahkan ke ' + (courier.name||'Kurir') + ' · Jakarta Selatan',
+    in_transit_hub:      'Hub Sortir ' + (courier.name||'Kurir') + ' · Jakarta',
+    out_for_delivery:    'Dalam perjalanan ke alamat kamu',
+    delivered:           'Paket telah diterima ✓',
+  };
+  const lokasi = lokasiMap[order.current_step] || '-';
+
+  return `
+    <div class="order-track-card" id="order-${order.tracking_number}" ${highlight?'style="border-color:var(--text);box-shadow:var(--shadow-md);"':''}>
+
+      <!-- Header -->
+      <div class="order-track-header" onclick="toggleOrderDetail('${order.tracking_number}')">
+        <div>
+          <p class="order-track-resi">${order.tracking_number}</p>
+          <p class="order-track-date">${formatDate(order.created_at)} · ${(order.items||[]).length} item · ${formatRupiah(order.total)}</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:.75rem;flex-shrink:0;">
+          <span class="status-badge status-${order.payment_status}">
+            ${order.payment_status === 'paid' ? 'Lunas' : order.payment_status === 'pending' ? 'Menunggu Bayar' : order.payment_status}
+          </span>
+          <i data-lucide="chevron-down" class="icon" id="chevron-${order.tracking_number}"></i>
+        </div>
+      </div>
+
+      <!-- Status bar -->
+      <div class="order-status-bar">
+        <div class="order-status-icon">
+          <i data-lucide="${icon}" class="icon icon-lg"></i>
+        </div>
+        <div>
+          <p class="order-status-label">${currentStepObj?.label || order.current_step.replace(/_/g,' ')}</p>
+          <p class="order-status-desc">${lokasi}</p>
+          ${order.estimated_delivery_date && order.current_step !== 'delivered'
+            ? `<p style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);margin-top:3px;">Estimasi tiba: <strong style="color:var(--text);">${order.estimated_delivery_date}</strong></p>`
+            : ''}
+        </div>
+      </div>
+
+      <!-- Progress steps -->
+      <div class="track-steps" style="padding-bottom:1rem;">
+        ${TRACK_STEPS_DISPLAY.map((s, i) => {
+          const isDone = i <= stepIdx;
+          const isCurrent = i === stepIdx;
+          return `<div class="track-step ${isDone?'done':''} ${isCurrent?'current':''}">
+            <div class="track-step-dot">
+              ${isDone ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--primary-text)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>` : ''}
+            </div>
+            <span class="track-step-label">${s.short}</span>
+          </div>`;
+        }).join('')}
+      </div>
+
+      <!-- Detail (collapsible) -->
+      <div id="detail-${order.tracking_number}" style="display:none;">
+        <!-- Kurir info -->
+        ${courier.tracking_number ? `
+        <div class="order-courier-row">
+          <div class="courier-info">
+            <span class="courier-badge">${courier.name||'Kurir'}</span>
+            <span class="courier-tracking">No. Resi Kurir: ${courier.tracking_number}</span>
+          </div>
+          ${order.estimated_delivery_date ? `
+          <div class="courier-eta">
+            <span>Estimasi Tiba</span>
+            <strong>${order.estimated_delivery_date}</strong>
+          </div>` : ''}
+        </div>` : ''}
+
+        <!-- Timeline -->
+        <div style="padding:1.25rem;border-top:1px solid var(--border);">
+          <p style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:.3em;text-transform:uppercase;color:var(--text-muted);margin-bottom:1rem;">Riwayat Status</p>
+          <div class="tracker-timeline">
+            ${(order.timeline||ORDER_STEPS.map((s,i)=>({...s,step:s.key,title:s.label,description:s.desc,completed:i<=stepIdx,timestamp:''}))).map(step => {
+              const isDone = step.completed;
+              const isCurr = step.step === order.current_step;
+              return `<div class="tracker-step">
+                <div class="tracker-dot ${isDone?'done':''} ${isCurr&&!isDone?'current':''}">
+                  ${isDone?`<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="var(--primary-text)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>`:''}
+                </div>
+                <p class="tracker-step-title" style="color:${isDone||isCurr?'var(--text)':'var(--text-muted)'};">${step.title||step.label||step.step}</p>
+                <p class="tracker-step-desc">${step.description||step.desc||''}</p>
+                ${step.timestamp?`<p class="tracker-step-time"><i data-lucide="clock" class="icon icon-xs"></i> ${step.timestamp}</p>`:''}
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+
+        <!-- Items -->
+        <div class="order-items-row">
+          <div class="order-items-imgs">
+            ${(order.items||[]).slice(0,4).map(it =>
+              `<img class="order-item-thumb" src="${it.image||''}" referrerpolicy="no-referrer" onerror="this.style.display='none'" title="${it.name}">`
+            ).join('')}
+            ${(order.items||[]).length > 4 ? `<div style="width:48px;height:56px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text-muted);">+${(order.items||[]).length-4}</div>` : ''}
+          </div>
+          <div>
+            <p class="order-items-meta">${(order.items||[]).length} item · ${order.payment_method?.toUpperCase()||''}</p>
+            <p class="order-items-total">${formatRupiah(order.total)}</p>
+          </div>
+        </div>
+      </div>
+
+    </div>`;
+}
+
+function toggleOrderDetail(resi) {
+  const detail = document.getElementById('detail-' + resi);
+  const chevron = document.getElementById('chevron-' + resi);
+  if (!detail) return;
+  const isOpen = detail.style.display !== 'none';
+  detail.style.display = isOpen ? 'none' : 'block';
+  if (chevron) {
+    chevron.setAttribute('data-lucide', isOpen ? 'chevron-down' : 'chevron-up');
+    lucide.createIcons();
+  }
+}
+
+function renderSearchBox(val) {
+  return `
+    <div class="tracker-search-box" style="margin-bottom:1.5rem;">
+      <label class="form-label">Cari dengan Nomor Resi</label>
+      <div class="tracker-search-row">
+        <input class="form-input" id="resi-input" placeholder="ARS-XXXXXXX" value="${val}"
+          style="flex:1;text-transform:none;letter-spacing:.05em;"
+          onkeydown="if(event.key==='Enter')searchOrder()">
+        <button class="btn-primary" onclick="searchOrder()">
+          <i data-lucide="search" class="icon"></i> Cari
+        </button>
+      </div>
+    </div>`;
+}
+
+async function searchOrder() {
+  const resi = document.getElementById('resi-input').value.trim().toUpperCase();
+  if (!resi) { showToast('Masukkan nomor resi.'); return; }
+
+  const { data, error } = await sb.from('orders').select('*').eq('tracking_number', resi).single();
+  const resultEl = document.getElementById('search-result') || (() => {
+    const d = document.createElement('div');
+    d.id = 'search-result';
+    document.getElementById('tracker-root').appendChild(d);
+    return d;
+  })();
+
+  if (error || !data) {
+    resultEl.innerHTML = `
+      <div style="text-align:center;padding:2rem;border:1px solid var(--border);background:var(--bg-card);">
+        <p style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--text-muted);">Nomor resi tidak ditemukan.</p>
+      </div>`;
+  } else {
+    resultEl.innerHTML = renderOrderCard(data, true);
+    // Auto expand detail
+    setTimeout(() => {
+      const detail = document.getElementById('detail-' + resi);
+      if (detail) detail.style.display = 'block';
+      lucide.createIcons();
+    }, 100);
+  }
+  lucide.createIcons();
+}
+
+initTracker();
+</script>
+</body>
+</html>
