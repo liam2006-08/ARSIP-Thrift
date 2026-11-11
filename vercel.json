@@ -3,7 +3,8 @@
   "builds": [
     { "src": "*.html", "use": "@vercel/static" },
     { "src": "js/**", "use": "@vercel/static" },
-    { "src": "public/**", "use": "@vercel/static" }
+    { "src": "public/**", "use": "@vercel/static" },
+    { "src": "asset/**", "use": "@vercel/static" }
   ],
   "routes": [
     { "src": "/admin", "dest": "/admin.html" },
