@@ -1,17 +1,14 @@
 {
-  "rewrites": [
-    { "source": "/", "destination": "/index.html" },
-    { "source": "/admin", "destination": "/admin.html" },
-    { "source": "/tracker", "destination": "/tracker.html" },
-    { "source": "/account", "destination": "/account.html" }
+  "version": 2,
+  "builds": [
+    { "src": "*.html", "use": "@vercel/static" },
+    { "src": "js/**", "use": "@vercel/static" },
+    { "src": "public/**", "use": "@vercel/static" }
   ],
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options", "value": "SAMEORIGIN" }
-      ]
-    }
+  "routes": [
+    { "src": "/admin", "dest": "/admin.html" },
+    { "src": "/tracker", "dest": "/tracker.html" },
+    { "src": "/account", "dest": "/account.html" },
+    { "src": "/(.*)", "dest": "/$1" }
   ]
 }
